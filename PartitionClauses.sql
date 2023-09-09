@@ -1,70 +1,67 @@
-/*==
-  This collection of functions shows you how to use partition by clauses to do inline aggregation
-  TH 202205
-==*/
-WITH M01_BASE_DATA AS  (
-        /* this generates a 48 row dummy table of random numbers */
-        SELECT  TRUNC(SYSDATE) AS TRADING_DATE,  
-	        LEVEL AS TRADING_PERIOD,
-	        -- generate a random number --
-                ROUND (DBMS_RANDOM.VALUE (1, 100)) 
-	        AS VALUE                            
-        FROM    DUAL T1
-        WHERE   ROWNUM <= 48
-	CONNECT BY LEVEL <= 48
-        /**/
-        )
-/*==
-  Build Starts Here
-==*/
-SELECT  S1.TRADING_PERIOD,                 -- return the trading period
-        S1.VALUE,                          -- return random number
-	-- get value from prior row --
-        MAX  (S1.VALUE) 
+/*
+  Purpose: This query demonstrates the use of partition by clauses for inline aggregation.
+  Author: TH
+  Date: 202309
+*/
+
+WITH m01_base_data AS (
+  -- Generate a 48-row dummy table of random numbers
+  SELECT
+    TRUNC(SYSDATE) AS trading_date,
+    LEVEL AS trading_period,
+    ROUND(DBMS_RANDOM.VALUE(1, 100)) AS value
+  FROM DUAL T1
+  WHERE ROWNUM <= 48
+  CONNECT BY LEVEL <= 48
+)
+
+-- Query Starts Here
+SELECT
+  s1.trading_period, -- Trading period
+  s1.value, -- Random number
+
+  -- Get value from the prior row
+  MAX(s1.value) 
+  OVER (PARTITION BY 1 
+        ORDER BY s1.trading_period 
+		ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS prior_row_value,
+
+  -- Get value from the next row
+  MAX(s1.value) 
+  OVER (PARTITION BY 1 
+  ORDER BY s1.trading_period 
+  ROWS BETWEEN 1 FOLLOWING AND 1 FOLLOWING) AS next_row_value,
+
+  -- Get cumulative running total
+  SUM(s1.value) 
+  OVER (PARTITION BY 1 
+        ORDER BY s1.trading_period 
+		ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total,
+
+  -- Get cumulative total remaining
+  SUM(s1.value) 
+  OVER (PARTITION BY 1 
+        ORDER BY s1.trading_period 
+		ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS total_remaining,
+
+  -- Get running daily total
+  SUM(s1.value) 
+  OVER (PARTITION BY s1.trading_date 
+        ORDER BY s1.trading_period 
+		ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS daily_running_total,
+
+  -- Get running daily total remaining
+  SUM(s1.value) 
+  OVER (PARTITION BY s1.trading_date 
+        ORDER BY s1.trading_period 
+		ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS daily_total_remaining,
+
+  -- Calculate moving average over 5 trading periods
+  ROUND(
+    AVG(value) 
 	OVER (PARTITION BY 1 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN 1 PRECEDING 
-	           AND     1 PRECEDING) 
-        AS PRIOR_ROW_VALUE,           
-	-- get value from next row --
-        MAX  (S1.VALUE) 
-	OVER (PARTITION BY 1 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN 1 FOLLOWING 
-	           AND     1 FOLLOWING) 
-	AS NEXT_ROW_VALUE,             
-        -- get cumulative running total --
-        SUM  (S1.VALUE) 
-	OVER (PARTITION BY 1 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN UNBOUNDED PRECEDING 
-	      AND CURRENT ROW) 
-	AS RUNNING_TOTAL,
-        -- get cumulative total remaining --
-        SUM  (S1.VALUE) 
-	OVER (PARTITION BY 1 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN CURRENT ROW 
-	      AND  UNBOUNDED FOLLOWING) 
-	AS TOTAL_REMAINING,
-        -- get running daily total --
-        SUM  (S1.VALUE) 
-	OVER (PARTITION BY S1.TRADING_DATE 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN UNBOUNDED PRECEDING 
-	      AND CURRENT ROW) AS DAILY_RUNNING_TOTAL,
-        -- get running daily total remaining --
-        SUM  (S1.VALUE) 
-	OVER (PARTITION BY S1.TRADING_DATE 
-	      ORDER BY S1.TRADING_PERIOD 
-	      ROWS BETWEEN CURRENT ROW 
-	      AND UNBOUNDED FOLLOWING) AS DAILY_TOTAL_REMAINING,
-        -- get moving average over 5 trading period -- 
-        ROUND (AVG (VALUE) 
-	       OVER (PARTITION BY 1 
-		     ORDER BY S1.TRADING_PERIOD 
-		     ROWS BETWEEN 5 PRECEDING 
-		     AND CURRENT ROW), 
-	       2) 
-	AS MOVING_AVERAGE
-FROM    M01_BASE_DATA S1 -- call M01_BASE_DATA and give it the alias S1;
+	      ORDER BY s1.trading_period 
+		  ROWS BETWEEN 5 PRECEDING AND CURRENT ROW), 2
+  ) AS moving_average
+
+FROM m01_base_data s1;
